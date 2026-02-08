@@ -7,6 +7,7 @@ An interactive agent app powered by Google Gemini with real-time web search grou
 - **Real-time web search** — Gemini automatically searches the web when it needs fresh information
 - **Verifiable citations** — Inline source links and grounding metadata
 - **Interactive CLI** — Chat-style interface for continuous queries
+- **Chainlit chatbot** — Web UI for the agent
 
 ## Setup
 
@@ -33,11 +34,21 @@ An interactive agent app powered by Google Gemini with real-time web search grou
 
 ## Usage
 
+### CLI agent
+
 ```bash
 python agent.py
 ```
 
-### Commands
+### Chainlit chatbot (web UI)
+
+```bash
+chainlit run chatbot.py
+```
+
+Then open http://localhost:8000 in your browser.
+
+### CLI commands
 
 - Type any question to search
 - `sources on` / `sources off` — Toggle display of source links

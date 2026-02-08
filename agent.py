@@ -5,10 +5,12 @@ Gemini Web Search Agent — General web search powered by Google Gemini with gro
 
 import os
 import sys
+from typing import Optional
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    # Load from project dir so .env is found even when run from elsewhere (e.g. chainlit)
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 except ImportError:
     pass
 
@@ -16,16 +18,24 @@ from google import genai
 from google.genai import types
 
 
-def get_client() -> genai.Client:
-    """Initialize the Gemini client with API key from environment."""
+def get_client_or_none() -> Optional[genai.Client]:
+    """Initialize the Gemini client. Returns None if API key is not set."""
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
+        return None
+    return genai.Client(api_key=api_key)
+
+
+def get_client() -> genai.Client:
+    """Initialize the Gemini client with API key from environment."""
+    client = get_client_or_none()
+    if client is None:
         print(
             "Error: GEMINI_API_KEY or GOOGLE_API_KEY not set. Add to .env or export:\n"
             "  export GEMINI_API_KEY=your_api_key"
         )
         sys.exit(1)
-    return genai.Client(api_key=api_key)
+    return client
 
 
 def add_citations(response) -> str:
@@ -82,6 +92,17 @@ def search(client: genai.Client, query: str, show_citations: bool = True) -> str
     """
     Run a web search using Gemini with grounding and return the response.
     """
+    text, _, _ = search_with_sources(client, query, show_citations)
+    return text
+
+
+def search_with_sources(
+    client: genai.Client, query: str, show_citations: bool = True
+) -> tuple[str, list[dict], list[str]]:
+    """
+    Run a web search using Gemini with grounding.
+    Returns (text, sources, queries). sources: [{"title": str, "uri": str}].
+    """
     grounding_tool = types.Tool(google_search=types.GoogleSearch())
     config = types.GenerateContentConfig(tools=[grounding_tool])
 
@@ -91,36 +112,56 @@ def search(client: genai.Client, query: str, show_citations: bool = True) -> str
         config=config,
     )
 
-    if show_citations:
-        return add_citations(response)
+    text = add_citations(response) if show_citations else (response.text or "")
+    sources = _extract_sources(response)
+    queries = _get_grounding_queries(response)
+    return text, sources, queries
 
-    return response.text or ""
 
-
-def print_sources(response):
-    """Print source links from grounding metadata."""
+def _extract_sources(response) -> list[dict]:
+    """Extract source links from grounding metadata."""
+    sources = []
     try:
         candidate = response.candidates[0]
         grounding = getattr(candidate, "grounding_metadata", None)
         if not grounding:
-            return
+            return sources
 
         chunks = getattr(grounding, "grounding_chunks", None) or []
-        queries = getattr(grounding, "web_search_queries", None) or []
-
-        if queries:
-            print("\n📋 Search queries used:", ", ".join(queries))
-
-        if chunks:
-            print("\n📎 Sources:")
-            for i, chunk in enumerate(chunks, 1):
-                web = getattr(chunk, "web", None)
-                if web:
-                    uri = getattr(web, "uri", "")
-                    title = getattr(web, "title", f"Source {i}")
-                    print(f"  [{i}] {title}: {uri}")
+        for chunk in chunks:
+            web = getattr(chunk, "web", None)
+            if web:
+                uri = getattr(web, "uri", "")
+                title = getattr(web, "title", "")
+                if uri:
+                    sources.append({"title": title or f"Source {len(sources) + 1}", "uri": uri})
     except (IndexError, AttributeError):
         pass
+    return sources
+
+
+def _get_grounding_queries(response) -> list[str]:
+    """Extract search queries from grounding metadata."""
+    try:
+        grounding = getattr(response.candidates[0], "grounding_metadata", None)
+        return getattr(grounding, "web_search_queries", None) or []
+    except (IndexError, AttributeError):
+        return []
+
+
+def _print_sources_data(sources: list[dict], queries: list[str]):
+    """Print sources and queries to stdout."""
+    if queries:
+        print("\n📋 Search queries used:", ", ".join(queries))
+    if sources:
+        print("\n📎 Sources:")
+        for i, src in enumerate(sources, 1):
+            print(f"  [{i}] {src['title']}: {src['uri']}")
+
+
+def print_sources(response):
+    """Print source links from grounding metadata."""
+    _print_sources_data(_extract_sources(response), _get_grounding_queries(response))
 
 
 def main():
@@ -158,20 +199,10 @@ def main():
             continue
 
         try:
-            grounding_tool = types.Tool(google_search=types.GoogleSearch())
-            config = types.GenerateContentConfig(tools=[grounding_tool])
-
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=query,
-                config=config,
-            )
-
-            text = add_citations(response)
+            text, sources, queries = search_with_sources(client, query, show_citations=True)
             print("\nAgent:", text)
-
             if show_sources:
-                print_sources(response)
+                _print_sources_data(sources, queries)
 
         except Exception as e:
             print(f"\nError: {e}")
