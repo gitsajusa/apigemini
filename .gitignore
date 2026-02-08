@@ -3,6 +3,8 @@ node_modules/
 # Python virtual environment
 .venv/
 .chainlit/
+.env
+**/.env
 # Vendor directory
 /vendor
 
@@ -14,6 +16,7 @@ npm-debug.log
 # Temporary files
 *.tmp
 *.json
+.env
 *.pyc
 # Caches
 .pytest_cache/
