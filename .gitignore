@@ -1,1 +1,19 @@
-.venv
+# Node.js dependencies
+node_modules/
+# Python virtual environment
+.venv/
+.chainlit/
+# Vendor directory
+/vendor
+
+#Log files, caches, and runtime files:
+
+# Log files
+*.log
+npm-debug.log
+# Temporary files
+*.tmp
+*.json
+*.pyc
+# Caches
+.pytest_cache/
